@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Optimiseur de découpe de barres</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f8fafc;
+      color: #1e293b;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1d4ed8;
+      color: white;
+      padding: 1rem 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+    }
+    header h1 { font-size: 1.25rem; font-weight: 700; }
+    header span { font-size: .9rem; opacity: .8; }
+
+    .app-grid {
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      gap: 1.5rem;
+      padding: 1.5rem;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    @media (max-width: 900px) {
+      .app-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ── PANELS ── */
+    .panel {
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 1.25rem;
+    }
+    .panel-title {
+      font-size: .75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: #64748b;
+      margin-bottom: 1rem;
+    }
+
+    /* ── PARAMS ── */
+    .param-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: .75rem;
+      margin-bottom: 1.25rem;
+    }
+    .field label {
+      display: block;
+      font-size: .8rem;
+      font-weight: 600;
+      color: #475569;
+      margin-bottom: .3rem;
+    }
+    .field input[type="number"] {
+      width: 100%;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 6px;
+      padding: .5rem .75rem;
+      font-size: .95rem;
+      color: #1e293b;
+      transition: border-color .15s;
+    }
+    .field input[type="number"]:focus {
+      outline: none;
+      border-color: #1d4ed8;
+    }
+    .field .hint {
+      font-size: .72rem;
+      color: #94a3b8;
+      margin-top: .25rem;
+    }
+
+    /* ── TABS ── */
+    .tab-bar {
+      display: flex;
+      border-bottom: 2px solid #e2e8f0;
+      margin-bottom: 1rem;
+    }
+    .tab-btn {
+      background: none;
+      border: none;
+      padding: .5rem 1rem;
+      font-size: .85rem;
+      font-weight: 600;
+      color: #64748b;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      transition: color .15s, border-color .15s;
+    }
+    .tab-btn.active {
+      color: #1d4ed8;
+      border-bottom-color: #1d4ed8;
+    }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── PIECES TABLE ── */
+    .pieces-table-wrap {
+      max-height: 280px;
+      overflow-y: auto;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      margin-bottom: .75rem;
+    }
+    #pieces-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    #pieces-table thead tr {
+      background: #f1f5f9;
+      position: sticky;
+      top: 0;
+    }
+    #pieces-table th {
+      padding: .45rem .75rem;
+      font-size: .78rem;
+      font-weight: 700;
+      text-align: left;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    #pieces-table td {
+      border-top: 1px solid #f1f5f9;
+      padding: .25rem .5rem;
+    }
+    #pieces-table td input[type="number"] {
+      width: 100%;
+      border: 1px solid transparent;
+      border-radius: 4px;
+      padding: .3rem .5rem;
+      font-size: .9rem;
+      background: transparent;
+      color: #1e293b;
+    }
+    #pieces-table td input[type="number"]:focus {
+      outline: none;
+      border-color: #1d4ed8;
+      background: #eff6ff;
+    }
+    .btn-del-row {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: #94a3b8;
+      font-size: 1.1rem;
+      line-height: 1;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .btn-del-row:hover { color: #ef4444; background: #fef2f2; }
+
+    .btn-add-row {
+      background: none;
+      border: 1.5px dashed #cbd5e1;
+      border-radius: 6px;
+      width: 100%;
+      padding: .4rem;
+      font-size: .85rem;
+      color: #64748b;
+      cursor: pointer;
+      transition: border-color .15s, color .15s;
+    }
+    .btn-add-row:hover { border-color: #1d4ed8; color: #1d4ed8; }
+
+    /* ── CSV TAB ── */
+    .csv-drop {
+      border: 2px dashed #cbd5e1;
+      border-radius: 8px;
+      padding: 1.5rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+      margin-bottom: .75rem;
+    }
+    .csv-drop:hover, .csv-drop.drag-over {
+      border-color: #1d4ed8;
+      background: #eff6ff;
+    }
+    .csv-drop input[type="file"] { display: none; }
+    .csv-drop-icon { font-size: 2rem; margin-bottom: .5rem; }
+    .csv-drop p { font-size: .85rem; color: #64748b; }
+    .csv-drop strong { color: #1d4ed8; }
+
+    #csv-preview {
+      font-size: .82rem;
+      color: #475569;
+    }
+    .csv-preview-table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .csv-preview-table th {
+      background: #f1f5f9;
+      padding: .35rem .6rem;
+      font-size: .75rem;
+      text-align: left;
+      color: #475569;
+      text-transform: uppercase;
+    }
+    .csv-preview-table td {
+      padding: .3rem .6rem;
+      border-top: 1px solid #f1f5f9;
+    }
+    .csv-info { margin-top: .5rem; color: #64748b; font-size: .8rem; }
+
+    /* ── ERRORS ── */
+    #errors {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: 6px;
+      padding: .75rem 1rem;
+      margin-bottom: 1rem;
+      display: none;
+    }
+    #errors p { font-size: .85rem; color: #991b1b; font-weight: 600; margin-bottom: .25rem; }
+    #errors ul { margin: 0; padding-left: 1.2rem; }
+    #errors li { font-size: .82rem; color: #b91c1c; }
+
+    /* ── OPTIMIZE BUTTON ── */
+    #btn-optimize {
+      width: 100%;
+      background: #1d4ed8;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: .7rem;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 1rem;
+      transition: background .15s, transform .1s;
+    }
+    #btn-optimize:hover { background: #1e40af; }
+    #btn-optimize:active { transform: scale(.98); }
+
+    /* ── SUMMARY ── */
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: .75rem;
+      margin-bottom: 1.25rem;
+    }
+    .stat-card {
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: .75rem 1rem;
+      text-align: center;
+    }
+    .stat-card .val {
+      font-size: 1.75rem;
+      font-weight: 800;
+      color: #1d4ed8;
+      line-height: 1.1;
+    }
+    .stat-card .lbl {
+      font-size: .72rem;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      margin-top: .2rem;
+    }
+
+    /* ── BAR CARDS ── */
+    .bar-card {
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      overflow: hidden;
+    }
+    .bar-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #f8fafc;
+      padding: .5rem 1rem;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .bar-card-header strong { font-size: .9rem; color: #1e293b; }
+    .bar-card-header .bar-pct {
+      font-size: .78rem;
+      font-weight: 700;
+      color: #059669;
+      background: #d1fae5;
+      padding: 2px 8px;
+      border-radius: 99px;
+    }
+    .bar-card-header .bar-pct.low { color: #b45309; background: #fef3c7; }
+
+    /* visual bar */
+    .bar-visual {
+      display: flex;
+      height: 22px;
+      margin: .6rem 1rem;
+      border-radius: 4px;
+      overflow: hidden;
+      border: 1px solid #e2e8f0;
+    }
+    .bar-seg {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: .6rem;
+      font-weight: 700;
+      color: white;
+      overflow: hidden;
+      white-space: nowrap;
+      transition: width .3s;
+    }
+    .bar-seg.piece { background: #3b82f6; }
+    .bar-seg.piece:nth-child(even) { background: #2563eb; }
+    .bar-seg.piece:nth-child(3n) { background: #1d4ed8; }
+    .bar-seg.waste { background: #fbbf24; color: #78350f; }
+
+    .bar-card table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .bar-card table th {
+      background: #f1f5f9;
+      padding: .35rem .75rem;
+      font-size: .75rem;
+      font-weight: 700;
+      text-align: left;
+      color: #475569;
+      text-transform: uppercase;
+    }
+    .bar-card table td {
+      padding: .35rem .75rem;
+      font-size: .875rem;
+      border-top: 1px solid #f1f5f9;
+    }
+    .row-waste td {
+      color: #92400e;
+      font-style: italic;
+      background: #fffbeb;
+    }
+    .bar-card-footer {
+      padding: .4rem 1rem;
+      font-size: .75rem;
+      color: #64748b;
+      border-top: 1px solid #f1f5f9;
+      background: #fafafa;
+    }
+
+    /* ── PRINT BUTTON ── */
+    #btn-print {
+      background: white;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 8px;
+      padding: .5rem 1.25rem;
+      font-size: .85rem;
+      font-weight: 600;
+      color: #475569;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: .4rem;
+      transition: border-color .15s, color .15s;
+    }
+    #btn-print:hover { border-color: #1d4ed8; color: #1d4ed8; }
+
+    .results-toolbar {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 1rem;
+    }
+
+    #results-panel { display: none; }
+
+    /* ── PRINT STYLES ── */
+    @media print {
+      body { background: white; }
+      header { background: white; color: #1e293b; border-bottom: 2px solid #1d4ed8; }
+      .app-grid { display: block; padding: 0; }
+      #input-panel, .results-toolbar { display: none !important; }
+      #results-panel { display: block !important; }
+      .panel { border: none; padding: 0; }
+      .bar-card { break-inside: avoid; page-break-inside: avoid; border: 1px solid #ccc; margin-bottom: .75rem; }
+      .bar-visual { display: none; }
+      .summary-grid { grid-template-columns: repeat(3, 1fr); }
+    }
+
+    /* ── SCROLLBAR ── */
+    .pieces-table-wrap::-webkit-scrollbar { width: 4px; }
+    .pieces-table-wrap::-webkit-scrollbar-track { background: transparent; }
+    .pieces-table-wrap::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3L14.5 4z"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+  <h1>Optimiseur de découpe de barres</h1>
+  <span>Algorithme FFD</span>
+</header>
+
+<div class="app-grid">
+
+  <!-- ══ PANNEAU SAISIE ══ -->
+  <div id="input-panel" class="panel">
+    <div class="panel-title">Paramètres</div>
+
+    <div class="param-row" style="grid-template-columns: 1fr;">
+      <div class="field">
+        <label for="bar-length">Longueur barre brute (mm)</label>
+        <input type="number" id="bar-length" min="1" step="1" placeholder="Ex : 6000" />
+        <div class="hint">Longueur commerciale standard</div>
+      </div>
+    </div>
+
+    <div class="panel-title">Pièces à découper</div>
+
+    <div class="tab-bar">
+      <button class="tab-btn active" data-tab="csv">Import CSV</button>
+      <button class="tab-btn" data-tab="manual">Saisie manuelle</button>
+    </div>
+
+    <!-- ── Onglet CSV ── -->
+    <div id="tab-csv" class="tab-panel active">
+      <div class="csv-drop" id="csv-drop">
+        <input type="file" id="csv-file" accept=".csv,.txt" />
+        <div class="csv-drop-icon">📂</div>
+        <p>Glissez un fichier <strong>.csv</strong> ou <strong>cliquez</strong> pour sélectionner</p>
+        <p style="margin-top:.3rem;font-size:.75rem;">Format : <code>quantite,longueur</code> (virgule ou point-virgule)</p>
+      </div>
+      <div id="csv-preview"></div>
+    </div>
+
+    <!-- ── Onglet Manuel ── -->
+    <div id="tab-manual" class="tab-panel">
+      <div class="pieces-table-wrap">
+        <table id="pieces-table">
+          <thead>
+            <tr>
+              <th style="width:80px">Quantité</th>
+              <th>Longueur (mm)</th>
+              <th style="width:36px"></th>
+            </tr>
+          </thead>
+          <tbody id="pieces-tbody"></tbody>
+        </table>
+      </div>
+      <button class="btn-add-row" id="btn-add-row">+ Ajouter une ligne</button>
+    </div>
+
+    <div id="errors"></div>
+
+    <button id="btn-optimize">⚡ Optimiser</button>
+  </div>
+
+  <!-- ══ PANNEAU RÉSULTATS ══ -->
+  <div id="results-panel" class="panel">
+    <div class="panel-title">Résultats</div>
+    <div class="results-toolbar">
+      <button id="btn-print">🖨 Imprimer / PDF</button>
+    </div>
+    <div id="summary-block" class="summary-grid"></div>
+    <div id="bars-container"></div>
+  </div>
+
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════
+const state = {
+  activeTab: 'csv',
+  csvPieces: [],   // [{qty, length}] from CSV
+};
+
+// ══════════════════════════════════════════════════════
+// MANUAL TABLE
+// ══════════════════════════════════════════════════════
+function addRow(qty = '', length = '') {
+  const tbody = document.getElementById('pieces-tbody');
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><input type="number" class="qty-input" min="1" step="1" value="${qty}" placeholder="1" /></td>
+    <td><input type="number" class="len-input" min="0.1" step="0.1" value="${length}" placeholder="1200" /></td>
+    <td><button class="btn-del-row" onclick="removeRow(this)" title="Supprimer">×</button></td>
+  `;
+  tbody.appendChild(tr);
+}
+
+function removeRow(btn) {
+  btn.closest('tr').remove();
+}
+
+function readManualTable() {
+  const rows = [];
+  document.querySelectorAll('#pieces-tbody tr').forEach(tr => {
+    const qty = parseFloat(tr.querySelector('.qty-input').value);
+    const length = parseFloat(tr.querySelector('.len-input').value);
+    if (!isNaN(qty) && qty > 0 && !isNaN(length) && length > 0) {
+      rows.push({ qty: Math.round(qty), length });
+    }
+  });
+  return rows;
+}
+
+document.getElementById('btn-add-row').addEventListener('click', () => addRow());
+
+// Add 3 default rows on load
+addRow(3, '');
+addRow(5, '');
+addRow(2, '');
+
+// ══════════════════════════════════════════════════════
+// TABS
+// ══════════════════════════════════════════════════════
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    state.activeTab = btn.dataset.tab;
+    clearErrors();
+  });
+});
+
+// ══════════════════════════════════════════════════════
+// CSV
+// ══════════════════════════════════════════════════════
+const csvDrop = document.getElementById('csv-drop');
+const csvFile = document.getElementById('csv-file');
+
+csvDrop.addEventListener('click', () => csvFile.click());
+csvFile.addEventListener('change', e => {
+  if (e.target.files[0]) handleCSVFile(e.target.files[0]);
+});
+
+csvDrop.addEventListener('dragover', e => { e.preventDefault(); csvDrop.classList.add('drag-over'); });
+csvDrop.addEventListener('dragleave', () => csvDrop.classList.remove('drag-over'));
+csvDrop.addEventListener('drop', e => {
+  e.preventDefault();
+  csvDrop.classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) handleCSVFile(e.dataTransfer.files[0]);
+});
+
+function handleCSVFile(file) {
+  Papa.parse(file, {
+    skipEmptyLines: true,
+    delimiter: '',   // auto-detect , or ;
+    complete: results => {
+      const pieces = parseCSVRows(results.data);
+      state.csvPieces = pieces;
+      renderCSVPreview(pieces, file.name);
+    },
+    error: () => showErrors(['Impossible de lire le fichier CSV.'])
+  });
+}
+
+function parseCSVRows(data) {
+  const rows = [];
+  for (const row of data) {
+    if (row.length < 2) continue;
+    // Detect separator: if first cell contains semicolon, split manually
+    let cells = row;
+    // PapaParse may return the whole line as one element if delimiter was tricky
+    if (row.length === 1 && typeof row[0] === 'string') {
+      cells = row[0].split(/[;,]/);
+    }
+    const a = cells[0] ? cells[0].trim() : '';
+    const b = cells[1] ? cells[1].trim() : '';
+    // Skip header
+    if (isNaN(parseFloat(a)) || isNaN(parseFloat(b))) continue;
+    const qty = Math.round(parseFloat(a));
+    const length = parseFloat(b);
+    if (qty > 0 && length > 0) rows.push({ qty, length });
+  }
+  return rows;
+}
+
+function renderCSVPreview(pieces, filename) {
+  const total = pieces.reduce((s, p) => s + p.qty, 0);
+  if (pieces.length === 0) {
+    document.getElementById('csv-preview').innerHTML = '<p style="color:#ef4444;font-size:.82rem;">Aucune donnée valide trouvée dans le fichier.</p>';
+    return;
+  }
+  let html = `<table class="csv-preview-table"><thead><tr><th>Qté</th><th>Longueur (mm)</th></tr></thead><tbody>`;
+  pieces.slice(0, 10).forEach(p => {
+    html += `<tr><td>${p.qty}</td><td>${fmt(p.length)}</td></tr>`;
+  });
+  if (pieces.length > 10) html += `<tr><td colspan="2" style="color:#94a3b8;font-style:italic;">… et ${pieces.length - 10} autre(s) type(s)</td></tr>`;
+  html += `</tbody></table>`;
+  html += `<div class="csv-info">✓ <strong>${filename}</strong> — ${pieces.length} type(s) de coupe, ${total} pièce(s) au total</div>`;
+  document.getElementById('csv-preview').innerHTML = html;
+}
+
+// ══════════════════════════════════════════════════════
+// VALIDATION
+// ══════════════════════════════════════════════════════
+function validate(pieces, barLength) {
+  const errors = [];
+  if (!barLength || barLength <= 0) errors.push('La longueur de barre brute doit être un nombre positif.');
+  if (pieces.length === 0) errors.push('Aucune pièce à découper saisie.');
+  pieces.forEach(p => {
+    if (p.length > barLength) {
+      errors.push(`Pièce de ${fmt(p.length)} mm dépasse la longueur de barre (${fmt(barLength)} mm).`);
+    }
+  });
+  return { valid: errors.length === 0, errors };
+}
+
+// ══════════════════════════════════════════════════════
+// FFD OPTIMIZER
+// ══════════════════════════════════════════════════════
+function optimize(pieces, barLength) {
+  // Expand
+  const expanded = [];
+  pieces.forEach(p => {
+    for (let i = 0; i < p.qty; i++) expanded.push(p.length);
+  });
+
+  // Sort descending
+  expanded.sort((a, b) => b - a);
+
+  // FFD
+  const bars = [];
+
+  for (const piece of expanded) {
+    let placed = false;
+    for (const bar of bars) {
+      if (round(bar.remaining - piece) >= -0.001) {
+        bar.remaining = round(bar.remaining - piece);
+        bar.cuts.push(piece);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) {
+      bars.push({
+        cuts: [piece],
+        remaining: round(barLength - piece),
+      });
+    }
+  }
+
+  // Compute stats
+  bars.forEach((bar, i) => {
+    bar.id = i + 1;
+    bar.waste = bar.remaining;
+    bar.usedLength = round(barLength - bar.waste);
+    bar.pct = Math.round((bar.usedLength / barLength) * 100);
+  });
+
+  return bars;
+}
+
+function round(v) { return Math.round(v * 1000) / 1000; }
+
+// ══════════════════════════════════════════════════════
+// RENDERER
+// ══════════════════════════════════════════════════════
+function renderResults(bars, barLength) {
+  renderSummary(bars, barLength);
+  renderBarCards(bars, barLength);
+  document.getElementById('results-panel').style.display = 'block';
+  document.getElementById('results-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function renderSummary(bars, barLength) {
+  const totalWaste = round(bars.reduce((s, b) => s + b.waste, 0));
+  const totalUsed = round(bars.reduce((s, b) => s + b.usedLength, 0));
+  const totalMaterial = barLength * bars.length;
+  const utilization = Math.round((totalUsed / totalMaterial) * 100);
+
+  document.getElementById('summary-block').innerHTML = `
+    <div class="stat-card">
+      <div class="val">${bars.length}</div>
+      <div class="lbl">Barres utilisées</div>
+    </div>
+    <div class="stat-card">
+      <div class="val">${fmt(totalWaste)}</div>
+      <div class="lbl">Chute totale (mm)</div>
+    </div>
+    <div class="stat-card">
+      <div class="val">${utilization}%</div>
+      <div class="lbl">Taux d'utilisation</div>
+    </div>
+  `;
+}
+
+function renderBarCards(bars, barLength) {
+  const container = document.getElementById('bars-container');
+  container.innerHTML = '';
+  bars.forEach(bar => {
+    const card = document.createElement('div');
+    card.className = 'bar-card';
+
+    const pctClass = bar.pct >= 80 ? '' : 'low';
+
+    // Visual bar
+    let visualHTML = '';
+    const colors = ['#3b82f6', '#2563eb', '#1d4ed8', '#1e40af', '#1e3a8a'];
+    bar.cuts.forEach((cut, idx) => {
+      const w = (cut / barLength * 100).toFixed(2);
+      const c = colors[idx % colors.length];
+      visualHTML += `<div class="bar-seg piece" style="width:${w}%;background:${c}" title="${fmt(cut)} mm">${w > 6 ? fmt(cut) : ''}</div>`;
+    });
+    if (bar.waste > 0) {
+      const w = (bar.waste / barLength * 100).toFixed(2);
+      visualHTML += `<div class="bar-seg waste" style="width:${w}%" title="Chute : ${fmt(bar.waste)} mm">${w > 6 ? '~' + fmt(bar.waste) : ''}</div>`;
+    }
+
+    // Cuts table
+    let tableHTML = `
+      <table>
+        <thead><tr><th>#</th><th>Longueur (mm)</th></tr></thead>
+        <tbody>
+    `;
+    bar.cuts.forEach((cut, idx) => {
+      tableHTML += `<tr><td>${idx + 1}</td><td>${fmt(cut)}</td></tr>`;
+    });
+    tableHTML += `
+        <tr class="row-waste"><td>—</td><td>Chute : ${fmt(bar.waste)} mm</td></tr>
+        </tbody>
+      </table>
+    `;
+
+    card.innerHTML = `
+      <div class="bar-card-header">
+        <strong>Barre ${bar.id}</strong>
+        <span class="bar-pct ${pctClass}">${bar.pct}% utilisé</span>
+      </div>
+      <div class="bar-visual">${visualHTML}</div>
+      ${tableHTML}
+      <div class="bar-card-footer">${bar.cuts.length} coupe(s) — ${fmt(bar.usedLength)} / ${fmt(barLength)} mm</div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// ERRORS
+// ══════════════════════════════════════════════════════
+function showErrors(errors) {
+  const el = document.getElementById('errors');
+  el.innerHTML = `<p>⚠ Veuillez corriger les erreurs suivantes :</p><ul>${errors.map(e => `<li>${e}</li>`).join('')}</ul>`;
+  el.style.display = 'block';
+}
+
+function clearErrors() {
+  const el = document.getElementById('errors');
+  el.style.display = 'none';
+  el.innerHTML = '';
+}
+
+// ══════════════════════════════════════════════════════
+// FORMAT
+// ══════════════════════════════════════════════════════
+function fmt(n) {
+  return Number.isInteger(n) ? n.toLocaleString('fr-FR') : n.toLocaleString('fr-FR', { maximumFractionDigits: 1 });
+}
+
+// ══════════════════════════════════════════════════════
+// MAIN ACTION
+// ══════════════════════════════════════════════════════
+document.getElementById('btn-optimize').addEventListener('click', () => {
+  clearErrors();
+
+  const barLength = parseFloat(document.getElementById('bar-length').value);
+  const pieces = state.activeTab === 'manual' ? readManualTable() : state.csvPieces;
+
+  const { valid, errors } = validate(pieces, barLength);
+  if (!valid) { showErrors(errors); return; }
+
+  const bars = optimize(pieces, barLength);
+  renderResults(bars, barLength);
+});
+
+// ══════════════════════════════════════════════════════
+// PRINT
+// ══════════════════════════════════════════════════════
+document.getElementById('btn-print').addEventListener('click', () => window.print());
+</script>
+</body>
+</html>
